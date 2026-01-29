@@ -2,16 +2,14 @@ class Todo {
   final int? id;
   final String title;
   final bool isDone;
-  final DateTime? createdAt;
 
-  Todo({this.id, required this.title, this.isDone = false, this.createdAt});
+  Todo({this.id, required this.title, this.isDone = false});
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
       'title': title,
       'isDone': isDone ? 1 : 0,
-      'createdAt': createdAt?.toIso8601String(),
     };
   }
 
@@ -20,7 +18,6 @@ class Todo {
       id: map['id'],
       title: map['title'],
       isDone: map['isDone'] == 1,
-      createdAt: map['createdAt'] != null ? DateTime.parse(map['createdAt']) : null,
     );
   }
 }

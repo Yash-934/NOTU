@@ -1,3 +1,4 @@
+
 import 'dart:async';
 import 'dart:io';
 
@@ -27,7 +28,7 @@ class DatabaseHelper {
     String path = join(documentsDirectory.path, 'notu.db');
     return await openDatabase(
       path,
-      version: 6, // Incremented version to add createdAt to todos
+      version: 4, // Incremented version to trigger onUpgrade
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -48,7 +49,6 @@ class DatabaseHelper {
         title TEXT,
         content TEXT,
         content_type INTEGER DEFAULT 0,
-        display_order INTEGER,
         FOREIGN KEY (book_id) REFERENCES books (id) ON DELETE CASCADE
       )
     ''');
@@ -60,8 +60,7 @@ class DatabaseHelper {
       CREATE TABLE todos(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT,
-        isDone INTEGER DEFAULT 0,
-        createdAt TEXT
+        isDone INTEGER DEFAULT 0
       )
     ''');
   }
@@ -75,12 +74,6 @@ class DatabaseHelper {
     }
     if (oldVersion < 4) {
       await _createTodoTable(db);
-    }
-    if (oldVersion < 5) {
-      await db.execute('ALTER TABLE chapters ADD COLUMN display_order INTEGER');
-    }
-    if (oldVersion < 6) {
-      await db.execute('ALTER TABLE todos ADD COLUMN createdAt TEXT');
     }
   }
 
@@ -125,28 +118,15 @@ class DatabaseHelper {
   // Chapter operations
   Future<int> insertChapter(Chapter chapter) async {
     Database db = await database;
-    // Get the current max display order for the book
-    final result = await db.rawQuery(
-        'SELECT MAX(display_order) as max_order FROM chapters WHERE book_id = ?',
-        [chapter.bookId]);
-    final maxOrder = result.first['max_order'] as int? ?? 0;
-    final newChapter = Chapter(
-      bookId: chapter.bookId,
-      title: chapter.title,
-      content: chapter.content,
-      contentType: chapter.contentType,
-      displayOrder: maxOrder + 1,
-    );
-    return await db.insert('chapters', newChapter.toMap());
+    return await db.insert('chapters', chapter.toMap());
   }
 
-  Future<List<Chapter>> getChaptersForBook(int bookId) async {
+  Future<List<Chapter>> getChapters(int bookId) async {
     Database db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       'chapters',
       where: 'book_id = ?',
       whereArgs: [bookId],
-      orderBy: 'display_order ASC',
     );
     return List.generate(maps.length, (i) {
       return Chapter.fromMap(maps[i]);
@@ -159,21 +139,6 @@ class DatabaseHelper {
     return List.generate(maps.length, (i) {
       return Chapter.fromMap(maps[i]);
     });
-  }
-
-  Future<void> updateChapterOrder(List<Chapter> chapters) async {
-    Database db = await database;
-    final batch = db.batch();
-    for (int i = 0; i < chapters.length; i++) {
-      final chapter = chapters[i];
-      batch.update(
-        'chapters',
-        {'display_order': i + 1},
-        where: 'id = ?',
-        whereArgs: [chapter.id],
-      );
-    }
-    await batch.commit(noResult: true);
   }
 
   Future<int> updateChapter(Chapter chapter) async {
@@ -208,7 +173,7 @@ class DatabaseHelper {
 
   Future<List<Todo>> getTodos() async {
     Database db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('todos', orderBy: 'createdAt DESC');
+    final List<Map<String, dynamic>> maps = await db.query('todos');
     return List.generate(maps.length, (i) {
       return Todo.fromMap(maps[i]);
     });
