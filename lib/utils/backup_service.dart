@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:file_picker/file_picker.dart';
+import 'package:file_saver/file_saver.dart';
 import 'package:notu/models/book.dart';
 import 'package:notu/models/chapter.dart';
 import 'package:notu/utils/database_helper.dart';
@@ -23,15 +23,14 @@ class BackupService {
       };
 
       final String jsonString = jsonEncode(backupData);
+      final String fileName = 'notu_backup_${DateTime.now().toIso8601String()}';
 
-      String? outputPath = await FilePicker.platform.getDirectoryPath();
-      if (outputPath == null) {
-        return false;
-      }
-
-      final String fileName = 'notu_backup_${DateTime.now().toIso8601String()}.json';
-      final File file = File('$outputPath/$fileName');
-      await file.writeAsString(jsonString);
+      await FileSaver.instance.saveAs(
+          name: fileName,
+          bytes: utf8.encode(jsonString),
+          fileExtension: 'json',
+          mimeType: MimeType.json,
+      );
 
       return true;
     } catch (e) {
@@ -41,34 +40,33 @@ class BackupService {
 
   Future<bool> restoreData() async {
     try {
-      final FilePickerResult? result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['json'],
+        withData: true,
       );
 
-      if (result == null || result.files.single.path == null) {
-        return false;
+      if (result != null && result.files.single.bytes != null) {
+        final jsonString = utf8.decode(result.files.single.bytes!);
+        final Map<String, dynamic> backupData = jsonDecode(jsonString);
+
+        final List<dynamic> bookList = backupData['books'];
+        final List<dynamic> chapterList = backupData['chapters'];
+
+        await dbHelper.deleteAllBooks();
+        await dbHelper.deleteAllChapters();
+
+        for (final bookMap in bookList) {
+          await dbHelper.insertBook(Book.fromMap(bookMap));
+        }
+
+        for (final chapterMap in chapterList) {
+          await dbHelper.insertChapter(Chapter.fromMap(chapterMap));
+        }
+        return true;
       }
 
-      final File file = File(result.files.single.path!);
-      final String jsonString = await file.readAsString();
-      final Map<String, dynamic> backupData = jsonDecode(jsonString);
-
-      final List<dynamic> bookList = backupData['books'];
-      final List<dynamic> chapterList = backupData['chapters'];
-
-      await dbHelper.deleteAllBooks();
-      await dbHelper.deleteAllChapters();
-
-      for (final bookMap in bookList) {
-        await dbHelper.insertBook(Book.fromMap(bookMap));
-      }
-
-      for (final chapterMap in chapterList) {
-        await dbHelper.insertChapter(Chapter.fromMap(chapterMap));
-      }
-
-      return true;
+      return false;
     } catch (e) {
       return false;
     }

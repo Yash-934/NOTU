@@ -1,4 +1,3 @@
-
 enum ContentType { markdown, html }
 
 class Chapter {
@@ -7,6 +6,7 @@ class Chapter {
   String title;
   String content;
   ContentType contentType;
+  int? displayOrder;
 
   Chapter({
     this.id,
@@ -14,6 +14,7 @@ class Chapter {
     required this.title,
     required this.content,
     this.contentType = ContentType.markdown,
+    this.displayOrder,
   });
 
   Map<String, dynamic> toMap() {
@@ -23,6 +24,7 @@ class Chapter {
       'title': title,
       'content': content,
       'content_type': contentType.index,
+      'display_order': displayOrder,
     };
   }
 
@@ -33,6 +35,7 @@ class Chapter {
       title: map['title'],
       content: map['content'],
       contentType: ContentType.values[map['content_type'] ?? 0],
+      displayOrder: map['display_order'],
     );
   }
 }

@@ -1,5 +1,7 @@
 
+import 'dart:convert';
 import 'dart:io';
+import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -115,15 +117,19 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
-    _booksFuture = dbHelper.getBooks();
+    _refreshBookList();
+  }
+
+  void _refreshBookList() {
+    setState(() {
+      _booksFuture = dbHelper.getBooks();
+    });
   }
 
   Future<void> _addBook(Book book) async {
     await dbHelper.insertBook(book);
+    _refreshBookList();
     if (!mounted) return;
-    setState(() {
-      _booksFuture = dbHelper.getBooks();
-    });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Book added!')),
     );
@@ -131,10 +137,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _deleteBook(int id) async {
     await dbHelper.deleteBook(id);
+    _refreshBookList();
     if (!mounted) return;
-    setState(() {
-      _booksFuture = dbHelper.getBooks();
-    });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Book deleted!')),
     );
@@ -142,10 +146,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _editBook(Book book) async {
     await dbHelper.updateBook(book);
+    _refreshBookList();
     if (!mounted) return;
-    setState(() {
-      _booksFuture = dbHelper.getBooks();
-    });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Book updated!')),
     );
@@ -155,9 +157,7 @@ class _MyHomePageState extends State<MyHomePage> {
     final success = await bookImporterExporter.importBook();
     if (!mounted) return;
     if (success) {
-      setState(() {
-        _booksFuture = dbHelper.getBooks();
-      });
+      _refreshBookList();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Book imported!')),
       );
@@ -169,11 +169,24 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _exportBook(Book book) async {
-    final success = await bookImporterExporter.exportBook(book);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(success ? 'Book exported!' : 'Export failed.')),
-    );
+    final jsonString = await bookImporterExporter.exportBook(book);
+    if (jsonString != null) {
+      await FileSaver.instance.saveAs(
+        name: book.title,
+        bytes: utf8.encode(jsonString),
+        fileExtension: 'json',
+        mimeType: MimeType.json,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Book exported!')),
+      );
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Export failed.')),
+      );
+    }
   }
 
   @override
@@ -193,6 +206,11 @@ class _MyHomePageState extends State<MyHomePage> {
             },
           ),
           IconButton(
+            icon: const Icon(Icons.upload_file),
+            onPressed: _importBook,
+            tooltip: 'Import Book',
+          ),
+          IconButton(
             icon: const Icon(Icons.brightness_6),
             onPressed: () {
               Provider.of<ThemeProvider>(context, listen: false).toggleTheme();
@@ -203,7 +221,10 @@ class _MyHomePageState extends State<MyHomePage> {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                MaterialPageRoute(
+                    builder: (context) => SettingsScreen(
+                          onDataRestored: _refreshBookList,
+                        )),
               );
             },
           ),
@@ -332,9 +353,6 @@ class _MyHomePageState extends State<MyHomePage> {
       case 'export':
         _exportBook(book);
         break;
-      case 'import':
-        _importBook();
-        break;
     }
   }
 
@@ -359,10 +377,6 @@ class _MyHomePageState extends State<MyHomePage> {
         const PopupMenuItem(
           value: 'export',
           child: Text('Export'),
-        ),
-        const PopupMenuItem(
-          value: 'import',
-          child: Text('Import'),
         ),
       ],
     );

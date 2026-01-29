@@ -1,9 +1,9 @@
-
 import 'package:flutter/material.dart';
 import 'package:notu/models/book.dart';
 import 'package:notu/models/chapter.dart';
 import 'package:notu/screens/add_chapter_screen.dart';
 import 'package:notu/screens/chapter_details_screen.dart';
+import 'package:notu/screens/reorder_chapters_screen.dart';
 import 'package:notu/utils/database_helper.dart';
 
 class BookDetailsScreen extends StatefulWidget {
@@ -11,7 +11,11 @@ class BookDetailsScreen extends StatefulWidget {
   final void Function(Book) onBookUpdate;
   final VoidCallback onBookDelete;
 
-  const BookDetailsScreen({super.key, required this.book, required this.onBookUpdate, required this.onBookDelete});
+  const BookDetailsScreen(
+      {super.key,
+      required this.book,
+      required this.onBookUpdate,
+      required this.onBookDelete});
 
   @override
   State<BookDetailsScreen> createState() => _BookDetailsScreenState();
@@ -24,14 +28,18 @@ class _BookDetailsScreenState extends State<BookDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    _chaptersFuture = dbHelper.getChapters(widget.book.id!);
+    _loadChapters();
+  }
+
+  void _loadChapters() {
+    setState(() {
+      _chaptersFuture = dbHelper.getChaptersForBook(widget.book.id!);
+    });
   }
 
   void _addChapter(Chapter chapter) async {
     await dbHelper.insertChapter(chapter);
-    setState(() {
-      _chaptersFuture = dbHelper.getChapters(widget.book.id!);
-    });
+    _loadChapters();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Chapter added!')),
@@ -41,9 +49,7 @@ class _BookDetailsScreenState extends State<BookDetailsScreen> {
 
   void _deleteChapter(int id) async {
     await dbHelper.deleteChapter(id);
-    setState(() {
-      _chaptersFuture = dbHelper.getChapters(widget.book.id!);
-    });
+    _loadChapters();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Chapter deleted!')),
@@ -53,9 +59,7 @@ class _BookDetailsScreenState extends State<BookDetailsScreen> {
 
   void _editChapter(Chapter chapter) async {
     await dbHelper.updateChapter(chapter);
-    setState(() {
-      _chaptersFuture = dbHelper.getChapters(widget.book.id!);
-    });
+    _loadChapters();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Chapter updated!')),
@@ -63,11 +67,45 @@ class _BookDetailsScreenState extends State<BookDetailsScreen> {
     }
   }
 
+  void _navigateToReorderScreen() async {
+    final chapters = await _chaptersFuture;
+    if (chapters.isNotEmpty) {
+      // Don't use context across async gaps.
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ReorderChaptersScreen(chapters: chapters),
+        ),
+      );
+      _loadChapters(); // Refresh the list after reordering
+    }
+  }
+
+  void _navigateToChapterDetails(Chapter chapter) async {
+    // Don't use context across async gaps.
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            ChapterDetailsScreen(chapter: chapter, onChapterUpdate: _editChapter),
+      ),
+    );
+    _loadChapters();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.book.title),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.reorder),
+            onPressed: _navigateToReorderScreen,
+          ),
+        ],
       ),
       body: FutureBuilder<List<Chapter>>(
         future: _chaptersFuture,
@@ -85,15 +123,9 @@ class _BookDetailsScreenState extends State<BookDetailsScreen> {
               final chapter = chapters[index];
               return ListTile(
                 title: Text(chapter.title),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ChapterDetailsScreen(chapter: chapter, onChapterUpdate: _editChapter),
-                    ),
-                  );
-                },
-                onLongPress: () => _showChapterContextMenu(context, chapter, _getTapPosition(context)),
+                onTap: () => _navigateToChapterDetails(chapter),
+                onLongPress: () =>
+                    _showChapterContextMenu(context, chapter, _getTapPosition(context)),
               );
             },
           );
@@ -104,7 +136,8 @@ class _BookDetailsScreenState extends State<BookDetailsScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => AddChapterScreen(bookId: widget.book.id!, onAddChapter: _addChapter),
+              builder: (context) =>
+                  AddChapterScreen(bookId: widget.book.id!, onAddChapter: _addChapter),
             ),
           );
         },
@@ -115,7 +148,8 @@ class _BookDetailsScreenState extends State<BookDetailsScreen> {
   }
 
   Offset _getTapPosition(BuildContext context) {
-    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
     return overlay.localToGlobal(Offset.zero);
   }
 
@@ -126,7 +160,10 @@ class _BookDetailsScreenState extends State<BookDetailsScreen> {
         children: [
           Icon(Icons.subtitles_off, size: 100, color: Theme.of(context).colorScheme.primary.withAlpha(128)),
           const SizedBox(height: 20),
-          Text('No chapters yet', style: Theme.of(context).textTheme.headlineMedium,),
+          Text(
+            'No chapters yet',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
           const SizedBox(height: 10),
           Text(
             'Create a new chapter to start writing.',
@@ -138,8 +175,10 @@ class _BookDetailsScreenState extends State<BookDetailsScreen> {
     );
   }
 
-  void _showChapterContextMenu(BuildContext context, Chapter chapter, Offset tapPosition) {
-    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+  void _showChapterContextMenu(
+      BuildContext context, Chapter chapter, Offset tapPosition) {
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
     showMenu(
       context: context,
       position: RelativeRect.fromRect(
@@ -179,7 +218,11 @@ class _BookDetailsScreenState extends State<BookDetailsScreen> {
               onPressed: () {
                 final newTitle = titleController.text;
                 if (newTitle.isNotEmpty) {
-                  _editChapter(Chapter(id: chapter.id, bookId: chapter.bookId, title: newTitle, content: chapter.content));
+                  _editChapter(Chapter(
+                      id: chapter.id,
+                      bookId: chapter.bookId,
+                      title: newTitle,
+                      content: chapter.content));
                   Navigator.pop(context);
                 }
               },

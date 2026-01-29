@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:notu/models/chapter.dart';
@@ -23,7 +22,7 @@ class _ChapterDetailsScreenState extends State<ChapterDetailsScreen> {
   bool _isEditing = false;
   late TextEditingController _contentController;
   final dbHelper = DatabaseHelper();
-  late final WebViewController _webViewController;
+  WebViewController? _webViewController;
 
   @override
   void initState() {
@@ -32,8 +31,61 @@ class _ChapterDetailsScreenState extends State<ChapterDetailsScreen> {
     if (widget.chapter.contentType == ContentType.html) {
       _webViewController = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..loadHtmlString(widget.chapter.content);
+        ..setBackgroundColor(const Color(0x00000000)); // Keep webview transparent to avoid flashes
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Load or reload the HTML with the correct theme colors whenever dependencies change
+    if (widget.chapter.contentType == ContentType.html && _webViewController != null) {
+      _webViewController!.loadHtmlString(_getStyledHtml(widget.chapter.content));
+    }
+  }
+
+  // Helper to convert a Flutter Color to a CSS-friendly hex string
+  String _colorToHex(Color color) {
+    return '#${(color.toARGB32() & 0x00FFFFFF).toRadixString(16).padLeft(6, '0')}';
+  }
+
+  // Injects CSS to style the HTML content based on the current Flutter theme
+  String _getStyledHtml(String content) {
+    final theme = Theme.of(context);
+    final scaffoldBackgroundColor = theme.scaffoldBackgroundColor;
+    final textColor = theme.textTheme.bodyMedium?.color;
+
+    // Convert colors to hex strings for CSS
+    final String backgroundColorHex = _colorToHex(scaffoldBackgroundColor);
+    final String textColorHex = textColor != null
+        ? _colorToHex(textColor)
+        : (theme.brightness == Brightness.dark ? '#ffffff' : '#000000');
+    final String primaryColorHex = _colorToHex(theme.colorScheme.primary);
+
+    return '''
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              background-color: $backgroundColorHex; /* Match app background */
+              color: $textColorHex; /* Match app text color */
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+              font-size: 16px;
+              margin: 0;
+              padding: 0;
+            }
+            a { 
+              color: $primaryColorHex; /* Match app primary color for links */
+            }
+          </style>
+        </head>
+        <body>
+          $content
+        </body>
+      </html>
+    ''';
   }
 
   void _toggleEditing() {
@@ -52,8 +104,10 @@ class _ChapterDetailsScreenState extends State<ChapterDetailsScreen> {
     );
     await dbHelper.updateChapter(updatedChapter);
     widget.onChapterUpdate(updatedChapter);
-    if (widget.chapter.contentType == ContentType.html) {
-      _webViewController.loadHtmlString(updatedChapter.content);
+
+    // After saving, if it's HTML, reload it with the updated content and styles
+    if (widget.chapter.contentType == ContentType.html && _webViewController != null) {
+      _webViewController!.loadHtmlString(_getStyledHtml(_contentController.text));
     }
     _toggleEditing();
   }
@@ -64,6 +118,7 @@ class _ChapterDetailsScreenState extends State<ChapterDetailsScreen> {
     final blockquoteColor = isDarkMode ? Colors.grey[700] : Colors.grey[300];
 
     return Scaffold(
+      backgroundColor: _isEditing ? Theme.of(context).cardColor : Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(widget.chapter.title),
         actions: [
@@ -130,7 +185,9 @@ class _ChapterDetailsScreenState extends State<ChapterDetailsScreen> {
                       ),
                     ),
                   )
-                : WebViewWidget(controller: _webViewController)),
+                : (_webViewController != null
+                    ? WebViewWidget(controller: _webViewController!)
+                    : const Center(child: Text('Could not load content.')))),
       ),
     );
   }
